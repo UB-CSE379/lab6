@@ -8,8 +8,8 @@
 	.global disqualifyflag
 
 ;SCORES
-buttonScore: 	.byte 0 ;address to keep track of button Score
-spaceScore:	 	.byte 0 ;address to keep track of space Score
+w_pressed: 	.byte 0 ;address to keep track of button Score
+spa:	 	.byte 0 ;address to keep track of space Score
 disqualifyflag:	.byte 0 ;address to keep track of space Score
 
 	.text
@@ -146,25 +146,24 @@ UART0_Handler:
 	;Check if enter pressed
 
 	LDRB r1, [r4]
-
-	;LDRB r0, [r4] ;r0 has the character
-
-	;LDRB r1,[r0]
-	;CMP r1, #13 ;ASCII for ENTER
-	;BEQ UART_ENTER;
-
-	;Check if q was pressed to end program
-	;CMP r1, #0x81 ; ASCII for q
-	;BEQ UART_END
-
-	;Check if space was pressed, before letting Handler move
-	CMP r1, #0x32; ASCII for Space
-	BNE UART_END ; if not space, exit
-
+	
 	LDRB r5, [r4, #0x044] ;UARTICR Offset
 	; Set the bit 4 (RXIC)
 	ORR r5, r5, #0x10 ; 0001 0000
 	STRB r5, [r4, #0x044]
+	
+	;Check what direction was pressed
+	CMP r1, #0x87; ASCII for W
+	BEQ MOVE_UP
+	
+	CMP r1, #0x65; ASCII for A
+	BEQ MOVE_LEFT
+	
+	CMP r1, #0x83; ASCII for S
+	BEQ MOVE_DOWN
+	
+	CMP r1, #0x68; ASCII for D
+	BEQ MOVE_RIGHT
 
 	;if prompt was presented, then this handler gets point, if not no point
 	;Check if round started
@@ -172,18 +171,6 @@ UART0_Handler:
 	LDRB r6, [r5]
 	CMP r6, #1
 	BNE DISQ ;if not 1 round did not start, end handler
-
-	;Handle giving point
-	LDR r7, ptr_to_spaceScore
-	LDRB r8, [r7]
-	ADD r8, r8, #1
-	STRB r8, [r7]
-	B UART_END
-
-DISQ:
-	LDR r7, ptr_to_flag
-	LDRB r8, [r7]
-	B UART_END
 
 
 
