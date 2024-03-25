@@ -2,15 +2,14 @@
 
 	;.global prompt
 	;.global mydata
-	.global buttonScore
-	.global spaceScore
-	.global roundState
-	.global disqualifyflag
+	.global directionFlag
 
-;SCORES
-w_pressed: 	.byte 0 ;address to keep track of button Score
-spa:	 	.byte 0 ;address to keep track of space Score
-disqualifyflag:	.byte 0 ;address to keep track of space Score
+directionFlag: 		.byte 0 ;address to keep track of what button was pressed,
+						; 1 - up, 2 - down, 3 - right , 4 - left
+
+
+
+
 
 	.text
 
@@ -24,18 +23,13 @@ disqualifyflag:	.byte 0 ;address to keep track of space Score
 	.global read_string				; This is from your Lab #4 Library
 	.global output_string			; This is from your Lab #4 Library
 	.global uart_init					; This is from your Lab #4 Library
-	.global lab5
+	.global lab6
 	.global print_all_numbers
 	.global read_character
 	.global string2int
 
-;ptr_to_prompt:		.word prompt
-;ptr_to_mydata:		.word mydata
 
-ptr_to_buttonScore: .word buttonScore
-ptr_to_spaceScore: .word spaceScore
-ptr_to_roundstate: 	.word roundState
-ptr_to_flag:		.word disqualifyflag
+ptr_to_direction: .word directionFlag
 
 U0FR: 	.equ 0x18	; UART0 Flag Register
 
@@ -143,34 +137,67 @@ UART0_Handler:
 	MOV r4, #0xC000
 	MOVT r4, #0x4000 ; UART0 Base Address
 
-	;Check if enter pressed
-
-	LDRB r1, [r4]
-	
 	LDRB r5, [r4, #0x044] ;UARTICR Offset
 	; Set the bit 4 (RXIC)
 	ORR r5, r5, #0x10 ; 0001 0000
 	STRB r5, [r4, #0x044]
-	
-	;Check what direction was pressed
-	CMP r1, #0x87; ASCII for W
-	BEQ MOVE_UP
-	
-	CMP r1, #0x65; ASCII for A
-	BEQ MOVE_LEFT
-	
-	CMP r1, #0x83; ASCII for S
-	BEQ MOVE_DOWN
-	
-	CMP r1, #0x68; ASCII for D
-	BEQ MOVE_RIGHT
 
-	;if prompt was presented, then this handler gets point, if not no point
-	;Check if round started
-	LDR r5, ptr_to_roundstate
+	LDRB r1, [r4]
+
+	;Check if w pressed, up, write 1 for up
+	CMP r1, #0x87 ; Ascii for W
+	BEQ UP_PRESSED
+
+	;Check if s pressed, down, write 2 for down
+	CMP r1, #0x83	; ASCII for S
+	BEQ DOWN_PRESSED
+
+	;Check if d pressed, right, write 3 for right
+	CMP r1, #0x68 ; Ascii for D
+	BEQ RIGHT_PRESSED
+
+	;Check if a pressed, left, write 4 for left
+	CMP r1, #0x65 ; ASCII for A
+	BEQ LEFT_PRESSED
+
+	;if anything else pressed, dont do anything
+	B UART_END
+
+UP_PRESSED:							;	write 1 for up
+	LDR r5, ptr_to_directionFlag
 	LDRB r6, [r5]
-	CMP r6, #1
-	BNE DISQ ;if not 1 round did not start, end handler
+	; Need to reset flag to 0 before adding the # for the direction
+	SUB r6, r6, r6	;subtracting by itself so its back to 0
+	ADD r6, r6, #1	; add value for flag
+	STRB r6, [r5]
+	B UART_END
+
+DOWN_PRESSED:						;  write 2 for down
+	LDR r5, ptr_to_directionFlag
+	LDRB r6, [r5]
+	;reset flag
+	SUB r6, r6, r6
+	ADD r6, r6, #2 ; add value for down
+	STRB r6, [r5]
+	B UART_END
+
+RIGHT_PRESSED:						;  write 3 for right
+	LDR r5, ptr_to_directionFlag
+	LDRB r6, [r5]
+	;reset flag
+	SUB r6, r6, r6
+	ADD r6, r6, #3 ; add value for right
+	STRB r6, [r5]
+	B UART_END
+
+LEFT_PRESSED:						;  write 4 for left
+	LDR r5, ptr_to_directionFlag
+	LDRB r6, [r5]
+	;reset flag
+	SUB r6, r6, r6
+	ADD r6, r6, #4 ; add value for left
+	STRB r6, [r5]
+	B UART_END
 
 
 
@@ -334,80 +361,6 @@ uart_init:
 
 	POP {r4-r12,lr}  	; Restore registers from stack
 	MOV pc, lr
-
-;_________________________________________________________________________________________________________________________________________________
-
-
-gpio_btn_and_LED_init:
-	PUSH {r4-r12,lr}	; Spill registers to stack
-
-	;Enable Clocks for Ports B, D, and F
-	MOV r4, #0xE000
-	MOVT r4, #0x400F
-	LDRB r5, [r4, #0x608]		  ;00  1  0  1  0  1  0
-	ORR r5, r5, #0x2A ;0010 1010  Port F, E, D, C, B, A
-	STRB r5, [r4, #0x608]
-
-	;Port F Pin 4 is input, write 0
-		; - need a pull-up resistor for SW1
-	; Port D Pins 0-3 are input for Btns, write 0
-	; Port B Pins 0-3 are output for LEDs, write 1
-	; Port B Base Address-> 0x40005000
-	MOV r6, #0x5000
-	MOVT r6, #0x4000
-	;Port D Base Address -> 0x40007000
-	MOV r7, #0x7000
-	MOVT r7, #0x4000
-
-	;Port F Base Address -> 0x40025000
-	MOV r8, #0x5000
-	MOVT r8, #0x4002
-
-	;Set Pin Directions
-	;Port B Pin Direction is Output, write 1 to pins 0 - 3
-	LDRB r9, [r6, #0x400]
-    ORR r9, r9, #0x0F ;configure pins 0 - 3 as output
-    STRB r9, [r6, #0x400] ; write 1 to mem
-
-	;Port D Pin Direction is Input, Write 0 to pins 0-3
-	LDRB r9, [r7, #0x400]
-	AND r9, r9, #0x00
-	STRB r9, [r7, #0x400]
-
-	;Port F Pin Direction is Input, Write 0 to pin 4
-	; Port F Pin Direction Output for pins 0 - 3, write 1
-	LDRB r9, [r8, #0x400]
-	ORR r9, r9, #0x0E ; 0000 1110
-	STRB r9, [r8, #0x400]
-
-    ;SET PIN AS DIGITAL
-    ; Set Pins 0-3 in Port B Digital, write 1
-    LDRB r10, [r6, #0x51C]
-    ORR r10, r10, #0x0F
-    STRB r10, [r6, #0x51C]
-
-    ; Set Pins 0-3 in Port D Digital, write 1
-    LDRB r11, [r7, #0x51C]
-    ORR r11, r11, #0x0F
-    STRB r11, [r7, #0x51C]
-
-    ; Initilize Pull-up resistor for Port F, write 1
-    LDRB r12, [r8, #0x510]
-    ORR r12, r12, #0x10
-    STRB r12, [r8, #0x510]
-
-    ; Set Pin pins 1-4 in Port F Digital, write 1
-    LDRB r12, [r8, #0x51C]
-    ORR r12, r12, #0x1E
-    STRB r12, [r8, #0x51C]
-
-          ; Your code is placed here
-
-	POP {r4-r12,lr}  	; Restore registers from stack
-	MOV pc, lr
-
-;_________________________________________________________________________________________________________________________________________________
-
 
 output_character:
 	PUSH {r4-r12,lr}	; Spill registers to stack
