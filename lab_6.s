@@ -1,41 +1,46 @@
 	.data
 
 	.global initialprompt
-	.global press_enter
-	.global press_button
-	.global data1
-	.global buttonScore
-	.global spaceScore
-	.global roundState
-	.global spaceprompt
-	.global sw1prompt
-	.global spacew
-	.global sw1w
+	.global directionFlag	; track what direction snake is going
+	.global pauseFlag ; track if game is paused
+	.global board
+	.global score
 
 
 
 
-initialprompt: 	.cstring "\r\n--------------------------------------------------------------------------------\r\n|                                                                              |\r\n|                         THE REFLEX GAME DIRECTIONS                           |\r\n|                                                                              |\r\n--------------------------------------------------------------------------------\r\n|                                                                              |\r\n| Welcome to the Reflex Game! Compete against another player to see who has    |\r\n| the fastest reflexes. One player uses the SW1 button on the Tiva board, and  |\r\n| the other uses the space bar on the keyboard.                                |\r\n|                                                                              |\r\n| HOW TO PLAY:                                                                 |\r\n| 1. Read the rules.                                                            |\r\n| 2. Press the Enter key when you're ready to start the round.                 |\r\n| 3. After a random delay, you'll be prompted to press your button (SW1 or     |\r\n|    space bar). The first to press wins the round.                            |\r\n| 4. If you press too early, you're disqualified for that round.               |\r\n| 5. Scores are displayed after each round. Press Enter to start the next one. |\r\n|                                                                              |\r\n| The game continues until one player scores three points and wins!            |\r\n|                                                                              |\r\n| Good luck, and may the quickest reflex win!                                  |\r\n|                                                                              |\r\n--------------------------------------------------------------------------------\r\n"
-;initialprompt: 	.cstring " This is a reflex game. It will test which player has the faster reflex. \r\n User 1 has to press the space bar on the keyboard \r\n User 2 has to press the SW1 button on the Tiva \r\n Once round starts, a prompt will appear randomly to tell you to press your button. \r\n If you press your button first, you get a point \r\n If you press it before the prompt appears, you are disqualified for that round \r\n The first to 3 wins! \r\n"
-press_enter: 	.string "Press Enter To Start!!!",0
-press_button: 	.string "Press Your Button!!!",0
-data1: 			.string "placeholder",0
-spaceprompt: 	.string"User 1's Score: ",0
-sw1prompt: 		.string"User 2's Score: ",0
-spacew: 		.cstring"User 1 Has Won!!! \r\n GAME OVER"
-sw1w: 			.cstring"User 2 Has Won!!! \r\n GAME OVER"
+initialprompt: 	.string "\r\n--------------------------------------------------------------------------------\r\n|                                                                              |\r\n|                         THE REFLEX GAME DIRECTIONS                           |\r\n|                                                                              |\r\n--------------------------------------------------------------------------------\r\n|                                                                              |\r\n| Welcome to the Reflex Game! Compete against another player to see who has    |\r\n| the fastest reflexes. One player uses the SW1 button on the Tiva board, and  |\r\n| the other uses the space bar on the keyboard.                                |\r\n|                                                                              |\r\n| HOW TO PLAY:                                                                 |\r\n| 1. Read the rules.                                                            |\r\n| 2. Press the Enter key when you're ready to start the round.                 |\r\n| 3. After a random delay, you'll be prompted to press your button (SW1 or     |\r\n|    space bar). The first to press wins the round.                            |\r\n| 4. If you press too early, you're disqualified for that round.               |\r\n| 5. Scores are displayed after each round. Press Enter to start the next one. |\r\n|                                                                              |\r\n| The game continues until one player scores three points and wins!            |\r\n|                                                                              |\r\n| Good luck, and may the quickest reflex win!                                  |\r\n|                                                                              |\r\n--------------------------------------------------------------------------------\r\n"
+board:
+    .string " -------------------- ", 0xA, 0xD  ; Top border 
 
-;mydata:	.byte	0x20	; This is where you can store data.
-			; The .byte assembler directive stores a byte
-			; (initialized to 0x20) at the label mydata.
-			; Halfwords & Words can be stored using the
-			; directives .half & .word
-roundState: 	.byte 0
+    .string "|                    |", 0xA, 0xD  ; Row 1
+    .string "|                    |", 0xA, 0xD  ; Row 2
+    .string "|                    |", 0xA, 0xD  ; Row 3
+    .string "|                    |", 0xA, 0xD  ; Row 4
+    .string "|                    |", 0xA, 0xD  ; Row 5
+    .string "|                    |", 0xA, 0xD  ; Row 6
+    .string "|                    |", 0xA, 0xD  ; Row 7
+    .string "|                    |", 0xA, 0xD  ; Row 8
+    .string "|                    |", 0xA, 0xD  ; Row 9
+    .string "|                    |", 0xA, 0xD  ; Row 10
+    .string "|                    |", 0xA, 0xD  ; Row 11
+    .string "|                    |", 0xA, 0xD  ; Row 12
+    .string "|                    |", 0xA, 0xD  ; Row 13
+    .string "|                    |", 0xA, 0xD  ; Row 14
+    .string "|                    |", 0xA, 0xD  ; Row 15
+    .string "|                    |", 0xA, 0xD  ; Row 16
+    .string "|                    |", 0xA, 0xD  ; Row 17
+    .string "|                    |", 0xA, 0xD  ; Row 18
+    .string "|                    |", 0xA, 0xD  ; Row 19
+    .string "|                    |", 0xA, 0xD  ; Row 20
+
+    .string " -------------------- ", 0xA, 0xD, 0x0  ; Bottom border 
 
 	.text
 
 	.global uart_interrupt_init
 	.global gpio_interrupt_init
+	.global timer_interrupt_init
 	.global UART0_Handler
 	.global Switch_Handler
 	.global Timer_Handler			; This is needed for Lab #6
@@ -45,19 +50,13 @@ roundState: 	.byte 0
 	.global read_string				; This is from your Lab #4 Library
 	.global output_string			; This is from your Lab #4 Library
 	.global uart_init					; This is from your Lab #4 Library
-	.global lab5
+	.global lab6
 	.global print_all_numbers
 	.global string2int
 
-ptr_to_spacew:		.word spacew
-ptr_to_sw1w:		.word sw1w
-ptr_to_spacep:		.word spaceprompt
-ptr_to_sw1p:		.word sw1prompt
-ptr_to_button:		.word press_button
-ptr_to_data1:		.word data1
-ptr_to_enter:		.word press_enter
-ptr_to_prompt1:		.word initialprompt
-;ptr_to_mydata:		.word mydata
+ptr_to_directionFlag: .word directionFlag
+ptr_to_pauseFlag: 	.word pauseFlag
+ptr_to_score: 	.word score
 
 lab6:								; This is your main routine which is called from
 ; your C wrapper.
@@ -66,6 +65,7 @@ lab6:								; This is your main routine which is called from
 	bl uart_init
 	bl uart_interrupt_init ;initializations
 	bl gpio_interrupt_init
+	bl timer_interrupt_init
 
 
 	POP {lr}		; Restore registers to adhere to the AAPCS
