@@ -15,6 +15,7 @@ directionFlag: 		.byte 0 ;address to keep track of what button was pressed,
 
 	.global uart_interrupt_init
 	.global gpio_interrupt_init
+	.global timer_interrupt_init
 	.global UART0_Handler
 	.global Switch_Handler
 	.global Timer_Handler			; This is needed for Lab #6
@@ -29,7 +30,7 @@ directionFlag: 		.byte 0 ;address to keep track of what button was pressed,
 	.global string2int
 
 
-ptr_to_direction: .word directionFlag
+ptr_to_directionFlag: .word directionFlag
 
 U0FR: 	.equ 0x18	; UART0 Flag Register
 
@@ -124,6 +125,64 @@ gpio_interrupt_init:
 
 	MOV pc, lr
 
+;Initalize timer interrupt
+timer_interrupt_init:
+	; Connect Clock to Timer
+	MOV r1, #0xE000
+	MOVT r1, #0x400F
+
+	;RCGCTIMER, using Timer 0
+	LDR r5, [r1, #0x604]
+	;Write a 1 to bit 0
+	ORR r5, r5, #0x01
+	STR r5, [r1, #0x604]
+
+	;Disable Timer to Configure (GPTMCTL), write 0 to TAEN
+	MOV r1, #0x0000
+	MOVT r1, #0x4003 ; Timer 0 Base Address
+
+	LDR r5, [r1, #0x00C]
+	BIC r5, r5, #0x01
+	STR r5, [r1, #0x00C]
+
+	;Put Timer in 32-bit Mode
+	LDR r5, [r1, #0x000]
+	BIC r5, r5, #0x000 	; clear bits 0 1 and 2
+	STR r5, [r1, #0x000]
+
+	;Put Timer in Periodic Mode
+	LDR r5, [r1, #0x004]
+	ORR r5, r5, #0x02 	; Write 2 to TAMR
+	STR r5, [r1, #0x004]
+
+	;Setup Interval Period
+	LDR r5, [r1, #0x028] ;16MHz per second, want to move 2 spaces per second
+							; so interval needs to be half 8 X 10^6, 1 space per half sec
+	MOV r6, #0x1200   ; 8 million into r6 to store into reg
+	MOVT r6, #0x007A
+	STR r6, [r1, #0x028]
+
+	;Enable Timer to Interrupt Processor
+	LDR r5, [r1, #0x018]
+	ORR r5, r5, #0x01 ; Write 1 to TATOIM, bit 0
+	STR r5, [r1, #0x018]
+
+	;Config Timer to Allow Timer to Interrupt /
+	; ENO Base Address
+	MOV r7, #0xE000
+	MOVT r7, #0xE000
+
+	LDR r5, [r7, #0x100]
+	; Set Bit 19 (TIMER0A) to 1
+	ORR r5, r5, #0x00080000
+	STR r5, [r7, #0x100]
+
+	;Enable Timer
+	LDR r5, [r1, #0x00C]
+	ORR r5, r5, #0x01 ; Write 1 to bit 0 to enable timer
+	STR r5, [r1, #0x00C]
+
+	MOV pc, lr
 
 UART0_Handler:
 
