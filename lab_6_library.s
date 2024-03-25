@@ -1,7 +1,5 @@
 	.data
 
-	;.global prompt
-	;.global mydata
 	.global directionFlag
 	.global pauseFlag
 
@@ -203,7 +201,7 @@ UART0_Handler:
 	; Set the bit 4 (RXIC)
 	ORR r5, r5, #0x10 ; 0001 0000
 	STRB r5, [r4, #0x044]
-
+	
 	LDRB r1, [r4]
 
 	;Check if w pressed, up, write 1 for up
@@ -347,8 +345,6 @@ simple_read_character:
 	; Read from UART0 Data Register
 	MOV r4, #0xC000
 	MOVT r4, #0x4000
-
-	;LDRB r0, [r4]
 
 	LDRB r0, [r4] ;r0 has the character
 
