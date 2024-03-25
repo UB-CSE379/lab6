@@ -3,9 +3,11 @@
 	;.global prompt
 	;.global mydata
 	.global directionFlag
+	.global pauseFlag
 
 directionFlag: 		.byte 0 ;address to keep track of what button was pressed,
 						; 1 - up, 2 - down, 3 - right , 4 - left
+pauseFlag: 			.byte 0
 
 
 
@@ -31,6 +33,7 @@ directionFlag: 		.byte 0 ;address to keep track of what button was pressed,
 
 
 ptr_to_directionFlag: .word directionFlag
+ptr_to_pauseFlag: 	.word pauseFlag
 
 U0FR: 	.equ 0x18	; UART0 Flag Register
 
@@ -278,22 +281,41 @@ Switch_Handler:
 	MOV r4, #0x5000
 	MOVT r4, #0x4002
 
+	; Get Timer 0 Base Address
+	MOV r5, #0x0000
+	MOVT r5, #0x4003 ; Timer 0 Base Address
+
 	;GPIOICR Offset
-	LDRB r5, [r4, #0x41C]
-	ORR r5, r5, #0x10 ; 0001 0000
-	STRB r5, [r4, #0x41C]
+	LDRB r6, [r4, #0x41C]
+	ORR r6, r6, #0x10 ; 0001 0000
+	STRB r6, [r4, #0x41C]
 
-	;if prompt was presented, then this handler gets point, if not no point
-	;Check if prompt appeared
-	LDR r5, ptr_to_roundstate
-	LDRB r6, [r5]
-	CMP r6, #1
-	BNE SWITCH_END ;if not 1 round did not start, end handler
-
-	;Handle giving point
-	LDR r7, ptr_to_buttonScore
+	; check if game is paused
+	LDR r7, ptr_to_pauseFlag
 	LDRB r8, [r7]
+	CMP r8, #1 ; if 1, need to resume game
+	BEQ RESUME
+
+	; If not paused, need to pause the game
+	; Disable the timer
+	LDR r9, [r5, #0x00C]
+	BIC r9, r9, #0x01
+	STR r9, [r5, #0x00C]
+
+	; Add 1 to pauseFlag saying game is paused now
 	ADD r8, r8, #1
+	STRB r8, [r7]
+	B SWITCH_END
+
+
+
+RESUME: ;If flag is 1, game is paused, need to resume, enable timer
+	;Enable Timer
+	LDR r9, [r5, #0x00C]
+	ORR r9, r9, #0x01 ; Write 1 to bit 0 to enable timer
+	STR r9, [r5, #0x00C]
+	; Set pauseflag to 0 saying game is not paused
+	SUB r8, r8, #1 ; r8 was 1, r8 - 1 = 0
 	STRB r8, [r7]
 
 
