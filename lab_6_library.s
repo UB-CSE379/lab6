@@ -15,7 +15,7 @@ number:		.string	0x00,0x00,0x00,0x00,0x00
 keyPress:		.string "w",0
 position: 		.word 0xFB	; center
 quitGame: 		.word 0
-pauseGameCheck:	.word 0
+pauseGameCheck:	.byte 0
 lossedCheck:	.word 0
 
 board: 	.string "----------------------", 0xA, 0xD
@@ -190,22 +190,29 @@ uart_init:
 
 
 uart_interrupt_init:
-	PUSH {lr} ; Store register lr on stack
-	;Configuring the UART for Interrupts
-	LDR r0, UART0		;set address to 0x4000C000
-	LDR r1, [r0, #0x038]
-	ORR r1, #0x10		;mask and set bit 4 to 1
-	STR r1, [r0, #0x038]
-	;Configure Processor to allow UART0 to Interrupt Processor (EN0)
-	MOV r0, #0xE000		;set address to 0xE000E000
-	MOVT r0, #0xE000
-	LDR r1, [r0, #0x100]
-	ORR r1, r1, #0x20	;mask and set bit 5 to 1
-	STR r1, [r0, #0x100]
+
+	PUSH {lr}
+	; Set the Receive Interrupt Mask
+
+	MOV r0, #0xC000
+	MOVT r0, #0x4000 ; UART Base Address
+
+	LDR r4, [r0, #0x038] ; UARTIM Offset
+
+	ORR r4, r4, #0x10 ; 0001 0000
+	STR r4, [r0, #0x038]
+
+	;Configure Processor to Allow Interrupts in UART
+	MOV r1, #0xE000
+	MOVT r1, #0xE000 ; ENO Base Address
+
+	LDR r5, [r1, #0x100]
+	ORR r5, r5, #0x20 ; 0010 0000
+	STR r5, [r1, #0x100]
+
 
 	POP {lr}
 	MOV pc, lr
-	;############################################# uart_interrupt_init END #############################################
 
 
 
@@ -266,82 +273,101 @@ gpio_interrupt_init:
 
 	;############################################# gpio_interrupt_init END #############################################
 
+;Initalize timer interrupt
 timer_interrupt_init:
 	PUSH {lr}
-	;Enable Clock for Timer (Tx) where x is timer number
-	MOV r0, #0xE000				;move memory address of Clock base address to r0
-	MOVT r0, #0x400F
-	LDR r1, [r0, #0x604]		;load content of r0 with offset with 0x604 to r1
-	ORR r1, #0x1				;set bit 0 to allow enable Clock for Timer0
-	STR r1, [r0, #0x604]		;store r1 into r0 to allow Clock to be enable for Timer0
+	; Connect Clock to Timer
+	MOV r1, #0xE000
+	MOVT r1, #0x400F
 
-	;Disable Timer
-	MOV r0, #0x0000				;move memory address of Timer0 base address to r0
-	MOVT r0, #0x4003
-	LDR r1, [r0, #0x00C]		;load content of r0 with offset with 0x00C to r1
-	BIC r1, #0x1				;clear bit 0 to disable Timer0
-	STR r1, [r0, #0x00C]		;store r1 into r0 to disable Timer0
+	;RCGCTIMER, using Timer 0
+	LDR r5, [r1, #0x604]
+	;Write a 1 to bit 0
+	ORR r5, r5, #0x01
+	STR r5, [r1, #0x604]
 
-	;Setting up Timer for 32-Bit Mode
-	LDR r1, [r0, #0x000]		;load content of r0 with offset with 0x000 to r1
-	BIC r1, #0x000				;Clear bit 0,1,2 to configure the Timer as a single 32-bit timer
-	STR r1, [r0, #0x000]		;store r1 into r0 to set Timer0 as a single 32-bit timer
+	;Disable Timer to Configure (GPTMCTL), write 0 to TAEN
+	MOV r1, #0x0000
+	MOVT r1, #0x4003 ; Timer 0 Base Address
+
+	LDR r5, [r1, #0x00C]
+	BIC r5, r5, #0x01
+	STR r5, [r1, #0x00C]
+
+	;Put Timer in 32-bit Mode
+	LDR r5, [r1, #0x000]
+	BIC r5, r5, #0x000 	; clear bits 0 1 and 2
+	STR r5, [r1, #0x000]
 
 	;Put Timer in Periodic Mode
-	LDR r1, [r0, #0x004]		;load content of r0 with offset with 0x004 to r1
-	ORR r1, #0x2				;Write 2 to TAMR to change the mode of Timer0 to Periodic Mode
-	STR r1, [r0, #0x004]		;store r1 into r0 to change Timer as Periodic Mode
+	LDR r5, [r1, #0x004]
+	ORR r5, r5, #0x02 	; Write 2 to TAMR
+	STR r5, [r1, #0x004]
 
 	;Setup Interval Period
-	LDR r1, [r0, #0x028]		;load content of r0 with offset with 0x028 to r1
-	MOV r1, #0x2400				;set r1 as 16000000 to make the Timer interrupt to start at 1 second
-	MOVT r1, #0x00F4
-	STR r1, [r0, #0x028]		;store r1 into r0 to make Timer interrupt start every 1 second
+	LDR r5, [r1, #0x028] ;16MHz per second, want to move 2 spaces per second
+							; so interval needs to be half 8 X 10^6, 1 space per half sec
+	MOV r6, #0x1200   ; 8 million into r6 to store into reg
+	MOVT r6, #0x007A
+	STR r6, [r1, #0x028]
 
-	;Setup Timer to Interrupt Processor
-	LDR r1, [r0, #0x018]		;load content of r0 with offset with 0x018 to r1
-	ORR r1, #0x1				;set bit 0 to enable Timer to Interrupt Processor
-	STR r1, [r0, #0x018]		;store r1 into r0 to enable Timer to Interrupt Processor
+	;Enable Timer to Interrupt Processor
+	LDR r5, [r1, #0x018]
+	ORR r5, r5, #0x01 ; Write 1 to TATOIM, bit 0
+	STR r5, [r1, #0x018]
 
-	;Configure Processor to Allow Timer to Interrupt Processor
-	LDR r0, EN0					;move memory address of EN0 base address to r0
-	LDR r1, [r0, #0x100]		;load content of r0 with offset of 0x100 to r1
-	ORR r1, #0x80000			;set bit 19 to Timer0 to Interrupt Processor
-	STR r1, [r0, #0x100]		;store r1 into r0 to allow Timer0 to Interrupt Processor
+	;Config Timer to Allow Timer to Interrupt /
+	; ENO Base Address
+	MOV r7, #0xE000
+	MOVT r7, #0xE000
+
+	LDR r5, [r7, #0x100]
+	; Set Bit 19 (TIMER0A) to 1
+	ORR r5, r5, #0x00080000
+	STR r5, [r7, #0x100]
 
 	;Enable Timer
-	MOV r0, #0x0000				;move memory address of Timer0 base address to r0
-	MOVT r0, #0x4003
-	LDR r1, [r0, #0x00C]		;load content of r0 with offset of 0x00C to r1
-	ORR r1, #0x1				;set bit 0 to enable Timer0
-	STR r1, [r0, #0x00C]		;store r1 into r0 to enable Timer0
+	LDR r5, [r1, #0x00C]
+	ORR r5, r5, #0x01 ; Write 1 to bit 0 to enable timer
+	STR r5, [r1, #0x00C]
 
 	POP {lr}
 	MOV pc, lr
-	;############################################# timer_interrupt_init END #############################################
-
 
 ;UART0_HANLDER SUBROUTINE
 UART0_Handler:
-	PUSH {r4-r12,lr}
+	; Your code for your UART handler goes here.
+	; Remember to preserver registers r4-r11 by pushing then popping
+	; them to & from the stack at the beginning & end of the handler
+	PUSH {r4-r11}
 
-	; clear interrupt
+
+	; Clear Interrupt
 	MOV r4, #0xC000
-	MOVT r4, #0x4000
-	LDR r5, [ r4, #0x044]
-	ORR r5, r5, #16
-	STR r5, [ r4, #0x044]
+	MOVT r4, #0x4000 ; UART0 Base Address
+
+	LDR r5, [r4, #0x044] ;UARTICR Offset
+	; Set the bit 4 (RXIC)
+	ORR r5, r5, #0x10 ; 0001 0000
+	STR r5, [r4, #0x044]
 
 	; read character and store accordinly
 	BL simple_read_character
-	MOV r5, r0
-
-	CMP r0, #ASCIIw
+	LDR r1, [r0]
+	
+	;Check if w pressed, up
+	CMP r1, #ASCIIw
 	BEQ wPressed
+	
+	;Check if a pressed
 	CMP r0, #ASCIIa
 	BEQ aPressed
+	
+	;Check if s pressed
 	CMP r0, #ASCIIs
 	BEQ sPressed
+	
+	;Check if d pressed
 	CMP r0, #ASCIId
 	BEQ dPressed
 	CMP r0, #ASCIIq
@@ -385,24 +411,61 @@ UARTend:
 
 ;SWITCH_HANDLER SUBROTUINE
 Switch_Handler:
-	PUSH {r4-r12,lr}
 
-	; clear interupt
-	MOV r0, #0x5000
-    MOVT r0, #0x4002
-    LDRB r1, [r0, #0x41C]
-    ORR r1, r1, #0x10
-    STRB r1, [r0, #0x41C]
+	; Your code for your Switch handler goes here.
+	; Remember to preserver registers r4-r11 by pushing then popping
+	; them to & from the stack at the beginning & end of the handler
+	PUSH {r4 - r11, lr}
 
-	; xoring the pause shit and putting it back
-	LDR r4, ptr_pauseGameCheck
-	LDR r5, [r4]
-	EOR r5, #1
-	STR r5, [r4]
+	; Clear Interrupt
+	MOV r4, #0x5000
+	MOVT r4, #0x4002
 
-	POP {r4-r12,lr}
+	; Get Timer 0 Base Address
+	MOV r5, #0x0000
+	MOVT r5, #0x4003 ; Timer 0 Base Address
+
+	;GPIOICR Offset
+	LDRB r6, [r4, #0x41C]
+	ORR r6, r6, #0x10 ; 0001 0000
+	STRB r6, [r4, #0x41C]
+
+	; check if game is paused
+	LDR r7, ptr_pauseGameCheck
+	LDRB r8, [r7]
+	CMP r8, #1 ; if 1, need to resume game
+	BEQ RESUME
+
+	; If not paused, need to pause the game
+	; Disable the timer
+	LDR r9, [r5, #0x00C]
+	BIC r9, r9, #0x01
+	STR r9, [r5, #0x00C]
+
+	; Add 1 to pauseFlag saying game is paused now
+	ADD r8, r8, #1
+	STRB r8, [r7]
+	B SWITCH_END
+
+
+
+RESUME: ;If flag is 1, game is paused, need to resume, enable timer
+	;Enable Timer
+	LDR r9, [r5, #0x00C]
+	ORR r9, r9, #0x01 ; Write 1 to bit 0 to enable timer
+	STR r9, [r5, #0x00C]
+	; Set pauseflag to 0 saying game is not paused
+	SUB r8, r8, #1 ; r8 was 1, r8 - 1 = 0
+	STRB r8, [r7]
+
+
+
+SWITCH_END:
+
+
+	POP {r4 - r11, lr}
+
 	BX lr       	; Return
-	;############################################# Switch_Handler END #############################################
 
 
 Timer_Handler:
@@ -414,12 +477,6 @@ Timer_Handler:
 	ORR r1, #0x1				;set bit 0 to clear Timer0 interrupt so Timer0 interrupt can be interrupted again
 	STR r1, [r0, #0x024]		;store r1 into r0 to clear Timer0 interrupt so Timer0 interrupt can be itnerrupted again
 	ADD r9, r9, #1
-
-		; check pause -> skip to end if 1
-	LDR r0, ptr_pauseGameCheck
-	LDR r1, [r0]
-	CMP r1, #1
-	BEQ timerEnd
 
 	; check lossed -> skip to end if 1
 	LDR r0, ptr_lossedCheck
@@ -469,7 +526,6 @@ wFunction:
 	LDR r0, ptr_board
 	MOV r4, #ASCIIstar
 	STRB r4, [r0, r3]
-	NOP
 	B moveSuccess
 
 
@@ -777,6 +833,5 @@ end_game:
 	LDR r0, ptr_to_hit
 	BL output_string
 
-	NOP
 
 .end
